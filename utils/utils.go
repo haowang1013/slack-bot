@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"github.com/kr/pretty"
 	"github.com/nlopes/slack"
 )
@@ -13,7 +12,7 @@ func ListGroups(api *slack.Client) {
 	}
 
 	for _, group := range groups {
-		fmt.Printf("%v\n", pretty.Formatter(group))
+		Log.Debug("%v", pretty.Formatter(group))
 	}
 }
 
@@ -24,7 +23,7 @@ func ListChannels(api *slack.Client) {
 	}
 
 	for _, c := range channels {
-		fmt.Printf("Channel '%s': '%s'\n", c.Name, c.ID)
+		Log.Debug("Channel '%s': '%s'\n", c.Name, c.ID)
 	}
 }
 

@@ -2,7 +2,7 @@ package commands
 
 import (
 	//"encoding/json"
-	"fmt"
+	"github.com/haowang1013/slack-bot/utils"
 	"github.com/kr/pretty"
 	"github.com/nlopes/slack"
 )
@@ -13,5 +13,5 @@ func HandleMessage(m *slack.MessageEvent) {
 		return
 	}
 
-	fmt.Printf("Got message: %v\n", pretty.Formatter(m))
+	utils.Log.Debug("Got message: %v", pretty.Formatter(m))
 }

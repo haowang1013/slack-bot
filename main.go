@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/haowang1013/slack-bot/commands"
 	"github.com/haowang1013/slack-bot/utils"
 	"github.com/nlopes/slack"
@@ -31,9 +30,9 @@ func main() {
 			case *slack.MessageEvent:
 				commands.HandleMessage(ev)
 			case *slack.LatencyReport:
-				fmt.Printf("Current latency: %v\n", ev.Value)
+				utils.Log.Debug("Current latency: %v", ev.Value)
 			case *slack.InvalidAuthEvent:
-				fmt.Printf("Invalid credentials")
+				utils.Log.Error("Invalid credentials")
 				break
 			}
 		}
