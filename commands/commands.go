@@ -1,17 +1,26 @@
 package commands
 
 import (
-	//"encoding/json"
 	"github.com/haowang1013/slack-bot/utils"
-	"github.com/kr/pretty"
 	"github.com/nlopes/slack"
+	"strings"
 )
 
-func HandleMessage(m *slack.MessageEvent) {
-	if len(m.BotID) > 0 {
-		// ignore bot message
-		return
-	}
+func ping(rtm *slack.RTM, fields []string, m *slack.MessageEvent) error {
+	utils.SendMessage(rtm, strings.Join(fields, " "), m.Channel)
+	return nil
+}
 
-	utils.Log.Debug("Got message: %v", pretty.Formatter(m))
+func init() {
+	addHandler("ping", HandlerFunc(ping))
+}
+
+func HandleMessage(rtm *slack.RTM, m *slack.MessageEvent) {
+	fields := strings.Fields(m.Text)
+	cmd := strings.ToLower(fields[0])
+	if handler, ok := handlers[cmd]; ok {
+		if err := handler.HandleCommand(rtm, fields[1:], m); err != nil {
+			utils.Log.Error("Failed to run command '%s': %s", cmd, err.Error())
+		}
+	}
 }

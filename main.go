@@ -28,7 +28,7 @@ func main() {
 			case *slack.ConnectedEvent:
 				utils.SendMessage(rtm, "I'm connected", channelID)
 			case *slack.MessageEvent:
-				commands.HandleMessage(ev)
+				commands.HandleMessage(rtm, ev)
 			case *slack.LatencyReport:
 				utils.Log.Debug("Current latency: %v", ev.Value)
 			case *slack.InvalidAuthEvent:
