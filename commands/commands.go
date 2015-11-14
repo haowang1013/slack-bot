@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"github.com/haowang1013/slack-bot/utils"
 	"github.com/nlopes/slack"
 	"strings"
@@ -20,7 +21,11 @@ func HandleMessage(rtm *slack.RTM, m *slack.MessageEvent) {
 	cmd := strings.ToLower(fields[0])
 	if handler, ok := handlers[cmd]; ok {
 		if err := handler.HandleCommand(rtm, fields[1:], m); err != nil {
-			utils.Log.Error("Failed to run command '%s': %s", cmd, err.Error())
+			msg := fmt.Sprintf("Command '%s' failed: %s", cmd, err.Error())
+			utils.Log.Error(msg)
+			utils.SendMessage(rtm, msg, m.Channel)
+		} else {
+			utils.Log.Info("Command '%s' succeeded", cmd)
 		}
 	}
 }
