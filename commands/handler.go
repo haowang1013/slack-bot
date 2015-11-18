@@ -10,13 +10,13 @@ type CommandHandler interface {
 	HandleCommand(rtm *slack.RTM, fields []string, m *slack.MessageEvent) error
 }
 
+var handlers = map[string]CommandHandler{}
+
 type HandlerFunc func(rtm *slack.RTM, fields []string, m *slack.MessageEvent) error
 
 func (f HandlerFunc) HandleCommand(rtm *slack.RTM, fields []string, m *slack.MessageEvent) error {
 	return f(rtm, fields, m)
 }
-
-var handlers = map[string]CommandHandler{}
 
 func addHandler(name string, handler CommandHandler) {
 	name = strings.ToLower(name)
