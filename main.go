@@ -19,6 +19,7 @@ func main() {
 
 	//api.SetDebug(true)
 	rtm := api.NewRTM()
+	commands.SetRTM(rtm)
 	go rtm.ManageConnection()
 
 	for {
@@ -28,7 +29,7 @@ func main() {
 			case *slack.ConnectedEvent:
 				utils.SendMessage(rtm, "I'm connected", channelID)
 			case *slack.MessageEvent:
-				commands.HandleMessage(rtm, ev)
+				commands.HandleMessage(ev)
 			case *slack.LatencyReport:
 				utils.Log.Debug("Current latency: %v", ev.Value)
 			case *slack.InvalidAuthEvent:
