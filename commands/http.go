@@ -2,9 +2,8 @@ package commands
 
 import (
 	"errors"
+	"github.com/haowang1013/slack-bot/utils"
 	"github.com/nlopes/slack"
-	"io/ioutil"
-	"net/http"
 	"strings"
 )
 
@@ -20,19 +19,11 @@ func init() {
 }
 
 func getHandler(fields []string, m *slack.MessageEvent) error {
-	url := fields[0]
-	resp, err := http.Get(url)
+	resp, err := utils.HttpGet(fields[0])
 	if err != nil {
 		return err
 	}
-
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	sendMessage(string(body), m.Channel)
+	sendMessage(string(resp), m.Channel)
 	return nil
 }
 

@@ -3,6 +3,8 @@ package utils
 import (
 	"github.com/kr/pretty"
 	"github.com/nlopes/slack"
+	"io/ioutil"
+	"net/http"
 )
 
 func ListGroups(api *slack.Client) {
@@ -29,4 +31,14 @@ func ListChannels(api *slack.Client) {
 
 func SendMessage(rtm *slack.RTM, message string, channel string) {
 	rtm.SendMessage(rtm.NewOutgoingMessage(message, channel))
+}
+
+func HttpGet(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return ioutil.ReadAll(resp.Body)
 }
