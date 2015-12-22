@@ -50,9 +50,26 @@ func init() {
 	}
 
 	rootHandler.addHandler("chat", &handleCollection{
-		"log":  HandlerFunc(getMessagesHandler),
-		"send": HandlerFunc(sendMessagesHandler),
+		"channels": HandlerFunc(listChannelsHandler),
+		"log":      HandlerFunc(getMessagesHandler),
+		"send":     HandlerFunc(sendMessagesHandler),
 	})
+}
+
+func prettyJson(source []byte, isArray bool) ([]byte, error) {
+	var temp interface{}
+	if isArray {
+		temp = make([]map[string]interface{}, 0)
+
+	} else {
+		temp = make(map[string]interface{})
+	}
+
+	if err := json.Unmarshal(source, &temp); err != nil {
+		return nil, err
+	}
+
+	return json.MarshalIndent(temp, "", " ")
 }
 
 func checkEnv() error {
@@ -71,6 +88,38 @@ func checkEnv() error {
 	return nil
 }
 
+func listChannelsHandler(fields []string, m *slack.MessageEvent) error {
+	if err := checkEnv(); err != nil {
+		return nil
+	}
+
+	req, err := http.NewRequest("GET", "https://leancloud.cn/1.1/classes/_Conversation", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("X-LC-Id", appID)
+	req.Header.Add("X-LC-Key", appKey)
+
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	content, err = prettyJson(content, true)
+	if err != nil {
+		return err
+	}
+
+	sendMessage(string(content), m.Channel)
+	return nil
+}
+
 func getMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	if err := checkEnv(); err != nil {
 		return nil
@@ -85,9 +134,9 @@ func getMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	if err != nil {
 		return err
 	}
-
 	req.Header.Add("X-LC-Id", appID)
 	req.Header.Add("X-LC-Key", appKey)
+
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	if err != nil {
@@ -99,17 +148,12 @@ func getMessagesHandler(fields []string, m *slack.MessageEvent) error {
 		return err
 	}
 
-	temp := make([]map[string]interface{}, 0)
-	err = json.Unmarshal(content, &temp)
+	content, err = prettyJson(content, true)
 	if err != nil {
 		return err
 	}
 
-	marshalled, err := json.MarshalIndent(temp, "", " ")
-	if err != nil {
-		return err
-	}
-	sendMessage(string(marshalled), m.Channel)
+	sendMessage(string(content), m.Channel)
 	return nil
 }
 
@@ -134,8 +178,6 @@ func sendMessagesHandler(fields []string, m *slack.MessageEvent) error {
 		return nil
 	}
 
-	utils.Log.Debug(string(buff))
-
 	req, err := http.NewRequest("POST", "https://leancloud.cn/1.1/rtm/messages", strings.NewReader(string(buff)))
 	if err != nil {
 		return err
@@ -143,11 +185,13 @@ func sendMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	req.Header.Add("X-LC-Id", appID)
 	req.Header.Add("X-LC-Key", fmt.Sprintf("%s,master", masterKey))
 	req.Header.Add("Content-Type", "application/json")
+
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
 
+	sendMessage("message sent", m.Channel)
 	return nil
 }
