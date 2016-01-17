@@ -1,17 +1,24 @@
 package main
 
 import (
+	"fmt"
 	"github.com/haowang1013/slack-bot/commands"
 	"github.com/haowang1013/slack-bot/utils"
 	"github.com/nlopes/slack"
+	"os"
 )
 
 const (
-	token     = "xoxb-14041206193-ruJiHzQMBkGoMwO2mThAChiw"
-	channelID = "C0E0ST6L9"
+	channelID    = "C0E0ST6L9"
+	tokenEnvName = "SLACK_API_TOKEN"
 )
 
 func main() {
+	token := os.Getenv(tokenEnvName)
+	if len(token) == 0 {
+		panic(fmt.Sprintf("Failed to get slack api token from environment variable '%s'", tokenEnvName))
+	}
+
 	api := slack.New(token)
 
 	utils.ListGroups(api)
