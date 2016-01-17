@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -32,6 +33,18 @@ type messageBody struct {
 	Transient bool   `json:"transient"`
 }
 
+type conversation struct {
+	Name string `json:"name"`
+}
+
+type conversationQuery struct {
+	Results []conversation `json:"results"`
+}
+
+type createChannelRequest struct {
+	Name string `json:"name"`
+}
+
 func init() {
 	found := false
 	appID, found = os.LookupEnv(envAppID)
@@ -50,9 +63,10 @@ func init() {
 	}
 
 	rootHandler.addHandler("chat", &handleCollection{
-		"channels": HandlerFunc(listChannelsHandler),
-		"log":      HandlerFunc(getMessagesHandler),
-		"send":     HandlerFunc(sendMessagesHandler),
+		"channels":   HandlerFunc(listChannelsHandler),
+		"log":        HandlerFunc(getMessagesHandler),
+		"send":       HandlerFunc(sendMessagesHandler),
+		"bulkcreate": HandlerFunc(bulkCreateChannelsHandler),
 	})
 }
 
@@ -101,10 +115,10 @@ func listChannelsHandler(fields []string, m *slack.MessageEvent) error {
 	req.Header.Add("X-LC-Key", appKey)
 
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -117,6 +131,96 @@ func listChannelsHandler(fields []string, m *slack.MessageEvent) error {
 	}
 
 	sendMessage(string(content), m.Channel)
+	return nil
+}
+
+func bulkCreateChannelsHandler(fields []string, m *slack.MessageEvent) error {
+	if err := checkEnv(); err != nil {
+		return nil
+	}
+
+	if len(fields) != 2 {
+		return errors.New("Expecting params: <tenant> <count>")
+	}
+
+	tenant := fields[0]
+	count, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return err
+	}
+
+	channelNames := make([]string, 0)
+	for i := 0; i < count; i++ {
+		channelNames = append(channelNames, fmt.Sprintf("%s:Channel %d", tenant, i+1))
+	}
+
+	// get all the conversations
+	req, err := http.NewRequest("GET", "https://api.leancloud.cn/1.1/classes/_Conversation", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("X-LC-Id", appID)
+	req.Header.Add("X-LC-Key", appKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	query := conversationQuery{}
+	err = json.Unmarshal(content, &query)
+	if err != nil {
+		return err
+	}
+
+	// set of all existing channels
+	names := make(map[string]bool)
+	for _, c := range query.Results {
+		names[c.Name] = true
+	}
+
+	// iterate all the ones we want and create missing ones
+	numExisting := 0
+	numCreated := 0
+	for _, name := range channelNames {
+		_, found := names[name]
+		if found {
+			utils.Log.Debug("Channel '%s' already exists", name)
+			numExisting++
+		} else {
+			// not found, create a channel
+			r := createChannelRequest{
+				Name: name,
+			}
+
+			buff, err := json.Marshal(&r)
+			if err != nil {
+				return nil
+			}
+
+			req, err := http.NewRequest("POST", "https://api.leancloud.cn/1.1/classes/_Conversation", strings.NewReader(string(buff)))
+			if err != nil {
+				return err
+			}
+			req.Header.Add("X-LC-Id", appID)
+			req.Header.Add("X-LC-Key", appKey)
+			req.Header.Add("Content-Type", "application/json")
+
+			resp, err := client.Do(req)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			utils.Log.Debug("Channel '%s' created", name)
+			numCreated++
+		}
+	}
+
+	sendMessage(fmt.Sprintf("Created %d channels, %d already exist", numCreated, numExisting), m.Channel)
 	return nil
 }
 
@@ -138,10 +242,10 @@ func getMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	req.Header.Add("X-LC-Key", appKey)
 
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -187,10 +291,10 @@ func sendMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	sendMessage("message sent", m.Channel)
 	return nil
