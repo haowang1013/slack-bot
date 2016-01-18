@@ -6,24 +6,23 @@ import (
 	"fmt"
 	"github.com/haowang1013/slack-bot/utils"
 	"github.com/nlopes/slack"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
-	"strings"
 )
 
 const (
 	envAppID     = "LEANCLOUD_APPID"
 	envAppKey    = "LEANCLOUD_APPKEY"
 	envMasterKey = "LEANCLOUD_MASTERKEY"
+	chatUrl      = "https://api.leancloud.cn/1.1/classes/_Conversation"
+	messageUrl   = "https://leancloud.cn/1.1/rtm/messages"
 )
 
 var (
-	appID     string
-	appKey    string
-	masterKey string
-	client    = &http.Client{}
+	appID          string
+	appKey         string
+	masterKey      string
+	defaultHeaders map[string]string
 )
 
 type messageBody struct {
@@ -33,12 +32,13 @@ type messageBody struct {
 	Transient bool   `json:"transient"`
 }
 
-type conversation struct {
-	Name string `json:"name"`
+type channel struct {
+	Name     string `json:"name"`
+	ObjectID string `json:"objectId"`
 }
 
-type conversationQuery struct {
-	Results []conversation `json:"results"`
+type channelQuery struct {
+	Channels []channel `json:"results"`
 }
 
 type createChannelRequest struct {
@@ -62,28 +62,26 @@ func init() {
 		utils.Log.Error("Missing environment variable '%s'", envMasterKey)
 	}
 
+	defaultHeaders = map[string]string{
+		"X-LC-Id":  appID,
+		"X-LC-Key": appKey,
+	}
+
 	rootHandler.addHandler("chat", &handleCollection{
 		"channels":   HandlerFunc(listChannelsHandler),
 		"log":        HandlerFunc(getMessagesHandler),
 		"send":       HandlerFunc(sendMessagesHandler),
 		"bulkcreate": HandlerFunc(bulkCreateChannelsHandler),
+		"find":       HandlerFunc(findChannelsHandler),
 	})
 }
 
-func prettyJson(source []byte, isArray bool) ([]byte, error) {
-	var temp interface{}
-	if isArray {
-		temp = make([]map[string]interface{}, 0)
-
-	} else {
-		temp = make(map[string]interface{})
+func prettyJson(obj interface{}) (string, error) {
+	content, err := json.MarshalIndent(obj, "", " ")
+	if err != nil {
+		return "", err
 	}
-
-	if err := json.Unmarshal(source, &temp); err != nil {
-		return nil, err
-	}
-
-	return json.MarshalIndent(temp, "", " ")
+	return string(content), nil
 }
 
 func checkEnv() error {
@@ -102,41 +100,57 @@ func checkEnv() error {
 	return nil
 }
 
+func findChannel(name string) (*channelQuery, error) {
+	query := &channelQuery{}
+	url := fmt.Sprintf("%s?where={\"name\":\"%s\"}", chatUrl, name)
+	err := utils.NewJsonRequest("GET", url, &defaultHeaders, nil, query)
+	if err != nil {
+		return nil, err
+	}
+	return query, nil
+}
+
+func findChannelsHandler(fields []string, m *slack.MessageEvent) error {
+	if err := checkEnv(); err != nil {
+		return err
+	}
+
+	if len(fields) != 1 {
+		return errors.New("Expecting params: <name>")
+	}
+	query, err := findChannel(fields[0])
+	if err != nil {
+		return err
+	}
+	content, err := prettyJson(query)
+	if err != nil {
+		return err
+	}
+	sendMessage(utils.FormatMessage(content, "```"), m.Channel)
+	return nil
+}
+
 func listChannelsHandler(fields []string, m *slack.MessageEvent) error {
 	if err := checkEnv(); err != nil {
-		return nil
-	}
-
-	req, err := http.NewRequest("GET", "https://leancloud.cn/1.1/classes/_Conversation", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-LC-Id", appID)
-	req.Header.Add("X-LC-Key", appKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	content, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
 		return err
 	}
 
-	content, err = prettyJson(content, true)
+	response := make(map[string]interface{})
+	err := utils.NewJsonRequest("GET", chatUrl, &defaultHeaders, nil, &response)
 	if err != nil {
 		return err
 	}
-
-	sendMessage(string(content), m.Channel)
+	content, err := prettyJson(response)
+	if err != nil {
+		return err
+	}
+	sendMessage(utils.FormatMessage(content, "```"), m.Channel)
 	return nil
 }
 
 func bulkCreateChannelsHandler(fields []string, m *slack.MessageEvent) error {
 	if err := checkEnv(); err != nil {
-		return nil
+		return err
 	}
 
 	if len(fields) != 2 {
@@ -151,119 +165,65 @@ func bulkCreateChannelsHandler(fields []string, m *slack.MessageEvent) error {
 
 	channelNames := make([]string, 0)
 	for i := 0; i < count; i++ {
-		channelNames = append(channelNames, fmt.Sprintf("%s:Channel %d", tenant, i+1))
+		channelNames = append(channelNames, fmt.Sprintf("%s:Channel_%d", tenant, i+1))
 	}
 
-	// get all the conversations
-	req, err := http.NewRequest("GET", "https://api.leancloud.cn/1.1/classes/_Conversation", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-LC-Id", appID)
-	req.Header.Add("X-LC-Key", appKey)
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	content, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	query := conversationQuery{}
-	err = json.Unmarshal(content, &query)
-	if err != nil {
-		return err
-	}
-
-	// set of all existing channels
-	names := make(map[string]bool)
-	for _, c := range query.Results {
-		names[c.Name] = true
-	}
-
-	// iterate all the ones we want and create missing ones
-	numExisting := 0
 	numCreated := 0
+	numExisting := 0
 	for _, name := range channelNames {
-		_, found := names[name]
-		if found {
-			utils.Log.Debug("Channel '%s' already exists", name)
+		query, err := findChannel(name)
+		if err != nil {
+			return err
+		}
+
+		numChannels := len(query.Channels)
+		if numChannels > 0 {
+			utils.Log.Debug("Found %d channels under name '%s'", numChannels, name)
 			numExisting++
 		} else {
-			// not found, create a channel
 			r := createChannelRequest{
 				Name: name,
 			}
 
-			buff, err := json.Marshal(&r)
-			if err != nil {
-				return nil
-			}
-
-			req, err := http.NewRequest("POST", "https://api.leancloud.cn/1.1/classes/_Conversation", strings.NewReader(string(buff)))
+			err := utils.NewJsonRequest("POST", chatUrl, &defaultHeaders, r, nil)
 			if err != nil {
 				return err
 			}
-			req.Header.Add("X-LC-Id", appID)
-			req.Header.Add("X-LC-Key", appKey)
-			req.Header.Add("Content-Type", "application/json")
-
-			resp, err := client.Do(req)
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
 			utils.Log.Debug("Channel '%s' created", name)
 			numCreated++
 		}
 	}
-
 	sendMessage(fmt.Sprintf("Created %d channels, %d already exist", numCreated, numExisting), m.Channel)
 	return nil
 }
 
 func getMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	if err := checkEnv(); err != nil {
-		return nil
+		return err
 	}
 
 	if len(fields) == 0 {
 		return errors.New("Missing channel ID")
 	}
 
-	uri := fmt.Sprintf("https://leancloud.cn/1.1/rtm/messages/logs?convid=%s&limit=10", fields[0])
-	req, err := http.NewRequest("GET", uri, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-LC-Id", appID)
-	req.Header.Add("X-LC-Key", appKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	content, err := ioutil.ReadAll(resp.Body)
+	uri := fmt.Sprintf("%s/logs?convid=%s&limit=10", messageUrl, fields[0])
+	response := make(map[string]interface{})
+	err := utils.NewJsonRequest("GET", uri, &defaultHeaders, nil, &response)
 	if err != nil {
 		return err
 	}
 
-	content, err = prettyJson(content, true)
+	content, err := prettyJson(response)
 	if err != nil {
 		return err
 	}
-
-	sendMessage(string(content), m.Channel)
+	sendMessage(utils.FormatMessage(content, "```"), m.Channel)
 	return nil
 }
 
 func sendMessagesHandler(fields []string, m *slack.MessageEvent) error {
 	if err := checkEnv(); err != nil {
-		return nil
+		return err
 	}
 
 	if len(fields) != 2 {
@@ -277,24 +237,14 @@ func sendMessagesHandler(fields []string, m *slack.MessageEvent) error {
 		Transient: false,
 	}
 
-	buff, err := json.Marshal(&msg)
-	if err != nil {
-		return nil
+	headers := map[string]string{
+		"X-LC-Id":  appID,
+		"X-LC-Key": fmt.Sprintf("%s,master", masterKey),
 	}
-
-	req, err := http.NewRequest("POST", "https://leancloud.cn/1.1/rtm/messages", strings.NewReader(string(buff)))
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-LC-Id", appID)
-	req.Header.Add("X-LC-Key", fmt.Sprintf("%s,master", masterKey))
-	req.Header.Add("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	err := utils.NewJsonRequest("POST", messageUrl, &headers, msg, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
 	sendMessage("message sent", m.Channel)
 	return nil
