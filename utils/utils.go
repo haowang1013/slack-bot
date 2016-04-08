@@ -22,7 +22,7 @@ func ListGroups(api *slack.Client) {
 	}
 
 	for _, group := range groups {
-		Log.Debug("%v", pretty.Formatter(group))
+		Log.Debugf("%v", pretty.Formatter(group))
 	}
 }
 
@@ -33,7 +33,7 @@ func ListChannels(api *slack.Client) {
 	}
 
 	for _, c := range channels {
-		Log.Debug("Channel '%s': '%s'\n", c.Name, c.ID)
+		Log.Debugf("Channel '%s': '%s'\n", c.Name, c.ID)
 	}
 }
 
@@ -99,7 +99,7 @@ func NewJsonRequest(verb string, url string, headers *map[string]string, payload
 		}
 		err = json.Unmarshal(content, response)
 		if err != nil {
-			Log.Error("Failed to unmarshall json string '%s' from request '%s'", string(content), url)
+			Log.Errorf("Failed to unmarshall json string '%s' from request '%s'", string(content), url)
 			return err
 		}
 	}

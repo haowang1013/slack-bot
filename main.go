@@ -38,7 +38,7 @@ func main() {
 			case *slack.MessageEvent:
 				commands.HandleMessage(ev)
 			case *slack.LatencyReport:
-				utils.Log.Debug("Current latency: %v", ev.Value)
+				utils.Log.Debugf("Current latency: %v", ev.Value)
 			case *slack.InvalidAuthEvent:
 				utils.Log.Error("Invalid credentials")
 				break

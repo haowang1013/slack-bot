@@ -49,17 +49,17 @@ func init() {
 	found := false
 	appID, found = os.LookupEnv(envAppID)
 	if !found {
-		utils.Log.Error("Missing environment variable '%s'", envAppID)
+		utils.Log.Errorf("Missing environment variable '%s'", envAppID)
 	}
 
 	appKey, found = os.LookupEnv(envAppKey)
 	if !found {
-		utils.Log.Error("Missing environment variable '%s'", envAppKey)
+		utils.Log.Errorf("Missing environment variable '%s'", envAppKey)
 	}
 
 	masterKey, found = os.LookupEnv(envMasterKey)
 	if !found {
-		utils.Log.Error("Missing environment variable '%s'", envMasterKey)
+		utils.Log.Errorf("Missing environment variable '%s'", envMasterKey)
 	}
 
 	defaultHeaders = map[string]string{
@@ -178,7 +178,7 @@ func bulkCreateChannelsHandler(fields []string, m *slack.MessageEvent) error {
 
 		numChannels := len(query.Channels)
 		if numChannels > 0 {
-			utils.Log.Debug("Found %d channels under name '%s'", numChannels, name)
+			utils.Log.Debugf("Found %d channels under name '%s'", numChannels, name)
 			numExisting++
 		} else {
 			r := createChannelRequest{
@@ -189,7 +189,7 @@ func bulkCreateChannelsHandler(fields []string, m *slack.MessageEvent) error {
 			if err != nil {
 				return err
 			}
-			utils.Log.Debug("Channel '%s' created", name)
+			utils.Log.Debugf("Channel '%s' created", name)
 			numCreated++
 		}
 	}

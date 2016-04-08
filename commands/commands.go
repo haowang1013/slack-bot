@@ -30,7 +30,7 @@ func HandleMessage(m *slack.MessageEvent) {
 		err := handler.HandleCommand(fields[1:], m)
 		if err == nil {
 			duration := time.Now().Sub(begin)
-			utils.Log.Info("Command '%s' executed in %.2f sec", cmd, duration.Seconds())
+			utils.Log.Infof("Command '%s' executed in %.2f sec", cmd, duration.Seconds())
 		} else {
 			msg := fmt.Sprintf("Command '%s' failed: %s", cmd, err.Error())
 			utils.Log.Error(msg)
